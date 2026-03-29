@@ -1,4 +1,27 @@
-# Getting Started with Create React App
+# 智能审核系统 - 前端原型
+
+中国区销售合同智能评审系统的交互原型，包含审核复核页与管理端界面。
+
+## 快速开始
+
+```bash
+npm install
+npm start
+```
+
+访问 [http://localhost:3000](http://localhost:3000)，默认进入管理端首页。
+
+| 页面 | 地址 |
+|------|------|
+| 管理端首页 | http://localhost:3000/admin |
+| 规则管理 | http://localhost:3000/admin/rules |
+| 审核复核页 | http://localhost:3000/reviewer |
+
+## 导入 Figma 继续设计
+
+若希望在 Figma 中继续设计，可使用 **html.to.design** 插件将页面导入 Figma。详细步骤见 [docs/FIGMA_设计导出指南.md](docs/FIGMA_设计导出指南.md)。
+
+---
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 

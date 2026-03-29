@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileCheck2, Settings, Users, LogOut, Search, Bell, ChevronDown, ArrowUpRight } from 'lucide-react';
+import { LayoutDashboard, FileCheck2, Settings, Users, LogOut, Search, Bell, ChevronDown, ArrowUpRight, Download } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { exportElementToSvg } from '../utils/exportSvg';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -10,6 +11,7 @@ function cn(...inputs: ClassValue[]) {
 
 export default function AdminLayout() {
   const location = useLocation();
+  const layoutRef = useRef<HTMLDivElement>(null);
 
   const navigation = [
     { name: '控制台首页', href: '/admin', icon: LayoutDashboard },
@@ -19,8 +21,13 @@ export default function AdminLayout() {
     { name: '系统设置', href: '/admin/settings', icon: Settings },
   ];
 
+  const handleExportSvg = () => {
+    const name = location.pathname === '/admin' ? 'admin-dashboard' : location.pathname.replace(/^\//, '').replace(/\//g, '-');
+    exportElementToSvg(layoutRef.current, name);
+  };
+
   return (
-    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
+    <div ref={layoutRef} className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
       {/* 侧边栏 */}
       <aside className="w-64 bg-white border-r border-surface-200 flex flex-col shrink-0 z-20">
         <div className="h-16 flex items-center px-6 border-b border-surface-100">
@@ -87,8 +94,15 @@ export default function AdminLayout() {
             </div>
           </div>
           
-          <div className="flex items-center gap-6">
-             <Link to="/reviewer" className="text-sm font-medium text-surface-600 hover:text-blue-600 flex items-center gap-1 transition-colors">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleExportSvg}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="导出当前页面为 SVG"
+            >
+              <Download className="w-4 h-4" /> 导出 SVG
+            </button>
+            <Link to="/reviewer" className="text-sm font-medium text-surface-600 hover:text-blue-600 flex items-center gap-1 transition-colors">
               前往审核复核页预览 <ArrowUpRight className="w-4 h-4" />
             </Link>
             <div className="h-5 w-[1px] bg-surface-200"></div>

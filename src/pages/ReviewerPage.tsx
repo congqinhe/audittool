@@ -1,21 +1,201 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, FileText, AlertTriangle, CheckCircle2, Info, ArrowUpRight, Search, LayoutTemplate, ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronLeft, FileText, AlertTriangle, CheckCircle2, Info, ArrowUpRight, Search, LayoutTemplate, ChevronUp, ChevronDown, Download } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { exportElementToSvg } from '../utils/exportSvg';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+type RiskCategory = 'trigger' | 'missing' | 'low';
+
+interface StructuredField {
+  id: string;
+  label: string;
+  value: string;
+  sourceText?: string;
+  locationId?: string;
+  confirmed?: boolean;
+}
+
+interface RiskItem {
+  id: string;
+  title: string;
+  summary: string;
+  details: string;
+  conclusion: string;
+  reason: string;
+  reasonLocationId?: string;
+  category: RiskCategory;
+  quote?: string;
+  locationId?: string;
+  isAccepted?: boolean;
+  structuredFields: StructuredField[];
+}
+
 function ReviewerPage() {
-  const [activeTab, setActiveTab] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [activeRiskId, setActiveRiskId] = useState<string | null>(null);
-  
+  const [riskItems, setRiskItems] = useState<RiskItem[]>([
+    {
+      id: 'risk-1',
+      title: '交货方式要求',
+      summary: '命中风险审核规则',
+      details: '合同约定交货方式为卖方负责交付并承担卸货费用，与规则要求“车板交货/主变基础交货”不一致。',
+      conclusion: '合同交货方式与风险规则不匹配，判定触发风险。',
+      reason: '根据第3条第3.1款“卖方负责将设备交付至指定地点，并承担卸货费用”，与“车板交货/主变基础交货”要求冲突，存在风险。',
+      reasonLocationId: 'risk-1',
+      category: 'trigger',
+      quote: '第3条 交货方式与地点 3.1 交货方式：卖方负责将设备交付至指定地点，并承担卸货费用。',
+      locationId: 'risk-1',
+      structuredFields: [
+        {
+          id: 'f-1-1',
+          label: '交货方式',
+          value: '卖方负责交付并承担卸货费用',
+          sourceText: '3.1 交货方式：卖方负责将设备交付至指定地点，并承担卸货费用。',
+          locationId: 'risk-1',
+          confirmed: false,
+        },
+        {
+          id: 'f-1-2',
+          label: '交货地点',
+          value: '买方XX变电站项目现场',
+          sourceText: '3.2 交货地点：买方XX变电站项目现场。',
+          locationId: 'risk-1',
+          confirmed: false,
+        },
+      ],
+      isAccepted: false,
+    },
+    {
+      id: 'risk-2',
+      title: '质保期要求',
+      summary: '没有支持判断的原文依据',
+      details: '合同中未明确约定质保期条款，无法判断是否满足规则中的12个月要求。',
+      conclusion: '合同中缺少质保期信息，判定信息缺失。',
+      reason: '合同全文未找到质保期条款（如第5条/第6条），无法用原文确认是否符合12个月要求。',
+      category: 'missing',
+      structuredFields: [
+        {
+          id: 'f-2-1',
+          label: '质保期',
+          value: '未约定',
+          confirmed: false,
+        },
+      ],
+      isAccepted: false,
+    },
+    {
+      id: 'risk-3',
+      title: '付款方式要求',
+      summary: '在规则要求内',
+      details: '合同约定支付为电汇或6个月内银行承兑汇票，符合规则要求。',
+      conclusion: '付款方式符合规则要求，判定低风险。',
+      reason: '根据第4条第4.3款“应通过电汇或6个月内到期的银行承兑汇票支付货款”，在规则范围内。',
+      reasonLocationId: 'risk-3',
+      category: 'low',
+      quote: '4.3 到货款：设备到达现场并验收合格后，应通过电汇或6个月内到期的银行承兑汇票支付货款。',
+      locationId: 'risk-3',
+      structuredFields: [
+        {
+          id: 'f-3-1',
+          label: '付款方式',
+          value: '电汇/6个月承兑汇票',
+          sourceText: '应通过电汇或6个月内到期的银行承兑汇票支付货款。',
+          locationId: 'risk-3',
+          confirmed: false,
+        },
+      ],
+      isAccepted: false,
+    },
+    {
+      id: 'risk-4',
+      title: '违约金比例',
+      summary: '存在潜在违约金额问题',
+      details: '违约金设定为逾期金额千分之五，需与合规规则比对上限。',
+      conclusion: '违约金比例可能超过规则上限，判定触发风险。',
+      reason: '根据第5条第5.1款“每逾期一日应支付逾期交货部分货款的千分之五”，需与最高30％上限对比判断。',
+      reasonLocationId: 'risk-4',
+      category: 'trigger',
+      quote: '5.1 卖方未能按期交货，每逾期一日应支付逾期交货部分货款的千分之五。',
+      locationId: 'risk-4',
+      isAccepted: false,
+      structuredFields: [
+        {
+          id: 'f-4-1',
+          label: '违约金比例',
+          value: '千分之五',
+          sourceText: '每逾期一日，应支付逾期交货部分货款的千分之五。',
+          locationId: 'risk-4',
+          confirmed: false,
+        },
+      ],
+    },
+  ]);
+
   // 审核意见相关状态
   const [opinionText, setOpinionText] = useState('');
   const [isOpinionExpanded, setIsOpinionExpanded] = useState(true);
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const lastScrollTop = useRef(0);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  const handleAcceptRisk = (item: RiskItem) => {
+    setRiskItems((prev) =>
+      prev.map((risk) =>
+        risk.id === item.id
+          ? {
+              ...risk,
+              isAccepted: true,
+              structuredFields: risk.structuredFields.map((field) => ({ ...field, confirmed: true })),
+            }
+          : risk
+      )
+    );
+    setOpinionText((prev) => {
+      const addition = `${item.conclusion} ${item.reason}`;
+      if (!prev.trim()) {
+        return addition;
+      }
+      return `${prev.trim()}\n${addition}`;
+    });
+  };
+
+  const handleIgnoreRisk = (riskId: string) => {
+    setRiskItems((prev) =>
+      prev.map((risk) =>
+        risk.id === riskId
+          ? {
+              ...risk,
+              isAccepted: false,
+              structuredFields: risk.structuredFields.map((field) => ({ ...field, confirmed: false })),
+            }
+          : risk
+      )
+    );
+  };
+
+  const handleSubmit = () => {
+    const accepted = riskItems.filter((risk) => risk.isAccepted);
+    const confirmedFields = riskItems.flatMap((risk) =>
+      risk.structuredFields
+        .filter((field) => field.confirmed)
+        .map((field) => ({ ...field, riskId: risk.id }))
+    );
+
+    const payload = {
+      opinion: opinionText,
+      acceptedRisks: accepted,
+      confirmedFields,
+    };
+
+    console.log('提交至BPM payload:', payload);
+    // TODO: 替换为真正的提交流程（例如调用 POST /bpm/review）
+
+    // 模拟提交成功后可清理状态逻辑
+    // setOpinionText('');
+  };
 
   // 拖动侧边栏状态
   const [rightPanelWidth, setRightPanelWidth] = useState(480);
@@ -100,7 +280,7 @@ function ReviewerPage() {
   };
   
   return (
-    <div className="flex flex-col h-screen bg-surface-50 overflow-hidden">
+    <div ref={pageRef} className="flex flex-col h-screen bg-surface-50 overflow-hidden">
       {/* 顶部导航栏 */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-surface-200 shrink-0 z-10">
         <div className="flex items-center gap-4">
@@ -125,6 +305,13 @@ function ReviewerPage() {
         </div>
         
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => exportElementToSvg(pageRef.current, 'reviewer-page')}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-600 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+            title="导出当前页面为 SVG"
+          >
+            <Download className="w-4 h-4" /> 导出 SVG
+          </button>
           <div className="px-3 py-1.5 bg-surface-100 rounded-full flex items-center gap-2 border border-surface-200 shadow-sm">
             <div className="w-2 h-2 rounded-full bg-primary-500"></div>
             <span className="text-sm font-medium text-surface-700">财务部视图</span>
@@ -252,162 +439,170 @@ function ReviewerPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto relative" ref={rightScrollRef}>
-            {/* 结构化提取信息 */}
-            <div className="p-5 border-b border-surface-100">
-              <h3 className="text-sm font-semibold text-surface-900 mb-4 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-surface-400" />
-                结构化关键要素
-              </h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <div className="space-y-1">
-                  <span className="text-xs text-surface-500">交货方式</span>
-                  <p className="text-sm font-medium text-surface-900 bg-surface-50 px-2 py-1 rounded border border-surface-200">现场交货含卸货</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-surface-500">付款方式</span>
-                  <p className="text-sm font-medium text-surface-900 bg-surface-50 px-2 py-1 rounded border border-surface-200">电汇/6月承兑</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-surface-500">质保期</span>
-                  <p className="text-sm font-medium text-surface-400 bg-surface-50 px-2 py-1 rounded border border-surface-200 italic">未约定</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-surface-500">违约金比例</span>
-                  <p className="text-sm font-medium text-surface-900 bg-surface-50 px-2 py-1 rounded border border-surface-200">未约定</p>
-                </div>
-              </div>
-            </div>
-
             {/* 风险点列表 */}
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-surface-400" />
+                  <FileText className="w-4 h-4 text-primary-600" />
                   规则评审结果
                 </h3>
                 
                 {/* 风险概览 Pill */}
                 <div className="flex items-center gap-1.5 text-xs font-medium bg-surface-100 p-1 rounded-full border border-surface-200">
                   <span className="px-2 py-0.5 bg-white text-risk-high rounded-full shadow-sm flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-risk-high"></span> 1
+                    <span className="w-1.5 h-1.5 rounded-full bg-risk-high"></span> {riskItems.filter((item) => item.category === 'trigger').length}
                   </span>
                   <span className="px-2 py-0.5 text-risk-medium flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-risk-medium"></span> 1
+                    <span className="w-1.5 h-1.5 rounded-full bg-risk-medium"></span> {riskItems.filter((item) => item.category === 'missing').length}
                   </span>
                   <span className="px-2 py-0.5 text-risk-low flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-risk-low"></span> 1
+                    <span className="w-1.5 h-1.5 rounded-full bg-risk-low"></span> {riskItems.filter((item) => item.category === 'low').length}
                   </span>
                 </div>
               </div>
 
               {/* 风险卡片列表 */}
               <div className="space-y-4">
-                
-                {/* 高风险 */}
-                <div 
-                  className={cn(
-                    "border rounded-lg overflow-hidden transition-all duration-200",
-                    activeRiskId === 'risk-1' ? "border-risk-high shadow-md ring-1 ring-risk-high/20" : "border-surface-200 hover:border-risk-high/50"
-                  )}
-                >
-                  <div className="bg-risk-high/5 p-3 border-b border-surface-100 flex items-start justify-between">
-                    <div className="flex items-start gap-2">
-                      <div className="mt-0.5 p-1 bg-risk-high/10 rounded-full text-risk-high">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold text-surface-900">交货方式要求</h4>
-                        <p className="text-xs font-medium text-risk-high mt-0.5">高风险：触发风险规则</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white space-y-3">
-                    <div className="text-sm text-surface-600 leading-relaxed">
-                      合同约定交货方式为"卖方负责将设备交付至指定地点，并承担卸货费用"，不符合规则要求的"车板交货"或"主变基础交货"。
-                    </div>
-                    <div className="bg-surface-50 p-2.5 rounded-md border border-surface-200 relative group">
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => scrollToRisk('risk-1')}
-                          className="flex items-center gap-1 text-xs font-medium text-primary-600 bg-white px-2 py-1 rounded shadow-sm border border-primary-100 hover:bg-primary-50"
-                        >
-                          <ArrowUpRight className="w-3 h-3" /> 定位
-                        </button>
-                      </div>
-                      <p className="text-xs text-surface-500 font-mono leading-relaxed line-clamp-3">
-                        "第3条 交货方式与地点 3.1 交货方式：卖方负责将设备交付至指定地点，并承担卸货费用。"
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                {riskItems
+                  .slice()
+                  .sort((a, b) => {
+                    const order: RiskCategory[] = ['trigger', 'missing', 'low'];
+                    return order.indexOf(a.category) - order.indexOf(b.category);
+                  })
+                  .map((item) => {
+                    const isActive = activeRiskId === item.id;
+                    const categoryMeta = {
+                      trigger: { bg: 'bg-risk-high/5', border: 'border-risk-high', text: 'text-risk-high', icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+                      missing: { bg: 'bg-risk-medium/5', border: 'border-risk-medium', text: 'text-risk-medium', icon: <Info className="w-3.5 h-3.5" /> },
+                      low: { bg: 'bg-risk-low/5', border: 'border-risk-low', text: 'text-risk-low', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+                    }[item.category];
 
-                {/* 中风险 */}
-                <div 
-                  className={cn(
-                    "border rounded-lg overflow-hidden transition-all duration-200",
-                    activeRiskId === 'risk-2' ? "border-risk-medium shadow-md ring-1 ring-risk-medium/20" : "border-surface-200 hover:border-risk-medium/50"
-                  )}
-                >
-                  <div className="bg-risk-medium/5 p-3 border-b border-surface-100 flex items-start justify-between">
-                    <div className="flex items-start gap-2">
-                      <div className="mt-0.5 p-1 bg-risk-medium/10 rounded-full text-risk-medium">
-                        <Info className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold text-surface-900">质保期要求</h4>
-                        <p className="text-xs font-medium text-risk-medium mt-0.5">中风险：无支持判断的条款要素</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white space-y-3">
-                    <div className="text-sm text-surface-600 leading-relaxed">
-                      合同中未明确约定质保期条款，无法判断是否符合财务规则要求的"12个月"。
-                    </div>
-                    <div className="bg-surface-50 p-2.5 rounded-md border border-surface-200 flex items-center justify-between">
-                      <p className="text-xs text-surface-400 italic">（合同中未找到相关条款，无法定位原文）</p>
-                      {/* 移除标记全篇按钮，仅作为状态展示 */}
-                    </div>
-                  </div>
-                </div>
+                    const categoryLabel = item.category === 'trigger' ? '触发风险' : item.category === 'missing' ? '信息缺失' : '低风险';
+                    const hoverBorderClass = item.category === 'trigger' ? 'hover:border-risk-high/50' : item.category === 'missing' ? 'hover:border-risk-medium/50' : 'hover:border-risk-low/50';
+                    const ringClass = item.category === 'trigger' ? 'ring-risk-high/20' : item.category === 'missing' ? 'ring-risk-medium/20' : 'ring-risk-low/20';
 
-                {/* 低风险 */}
-                <div 
-                  className={cn(
-                    "border rounded-lg overflow-hidden transition-all duration-200",
-                    activeRiskId === 'risk-3' ? "border-risk-low shadow-md ring-1 ring-risk-low/20" : "border-surface-200 hover:border-risk-low/50"
-                  )}
-                >
-                  <div className="bg-risk-low/5 p-3 border-b border-surface-100 flex items-start justify-between">
-                    <div className="flex items-start gap-2">
-                      <div className="mt-0.5 p-1 bg-risk-low/10 rounded-full text-risk-low">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold text-surface-900">付款方式要求</h4>
-                        <p className="text-xs font-medium text-risk-low mt-0.5">低风险：确认在规则要求内</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white space-y-3">
-                    <div className="text-sm text-surface-600 leading-relaxed">
-                      合同约定付款方式为"电汇或6个月内银行承兑汇票"，符合规则要求的"转账/电汇/6月内汇票"。
-                    </div>
-                    <div className="bg-surface-50 p-2.5 rounded-md border border-surface-200 relative group">
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => scrollToRisk('risk-3')}
-                          className="flex items-center gap-1 text-xs font-medium text-primary-600 bg-white px-2 py-1 rounded shadow-sm border border-primary-100 hover:bg-primary-50"
-                        >
-                          <ArrowUpRight className="w-3 h-3" /> 定位
-                        </button>
-                      </div>
-                      <p className="text-xs text-surface-500 font-mono leading-relaxed line-clamp-3">
-                        "...应通过电汇或6个月内到期的银行承兑汇票支付货款..."
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          'border rounded-lg overflow-hidden transition-all duration-200',
+                          isActive
+                            ? `${categoryMeta.border} shadow-md ring-1 ${ringClass}`
+                            : `border-surface-200 ${hoverBorderClass}`
+                        )}
+                      >
+                        <div className={cn(categoryMeta.bg, 'p-3 border-b border-surface-100 flex items-start justify-between')}>
+                          <div className="flex items-start gap-2">
+                            <div className={cn('mt-0.5 p-1 rounded-full', categoryMeta.bg, categoryMeta.text)}>{categoryMeta.icon}</div>
+                            <div>
+                              <h4 className="text-sm font-semibold text-surface-900">{item.title}</h4>
+                              <p className={cn('text-xs font-medium mt-0.5', categoryMeta.text)}>
+                                {categoryLabel}：{item.summary}
+                              </p>
+                            </div>
+                          </div>
 
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              onClick={() => handleAcceptRisk(item)}
+                              className={cn(
+                                'px-2 py-1 text-xs font-medium rounded-md border',
+                                item.isAccepted
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : 'bg-white text-green-600 border-green-200 hover:bg-green-50'
+                              )}
+                            >
+                              采纳
+                            </button>
+                            <button
+                              onClick={() => handleIgnoreRisk(item.id)}
+                              className="px-2 py-1 text-xs font-medium rounded-md border bg-white text-surface-600 border-surface-300 hover:bg-surface-100"
+                            >
+                              忽略
+                            </button>
+                            {item.isAccepted && (
+                              <span className="text-xs text-green-600 font-medium">已采纳</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-white space-y-4 border border-surface-200 rounded-lg shadow-sm">
+                          <div className="text-xs font-semibold text-surface-500 uppercase tracking-wider">审核结论</div>
+                          <div className="rounded-lg bg-surface-50 px-3 py-2 text-sm text-surface-900 leading-relaxed">
+                            {item.conclusion} {item.details}
+                          </div>
+
+                          <div className="text-xs font-semibold text-surface-500 uppercase tracking-wider">结论原因</div>
+                          <div className="rounded-lg bg-surface-50 px-3 py-2 text-sm text-surface-500">
+                            {(() => {
+                              const reasonMatch = item.reason.match(/第\d+条第\d+\.\d+款/);
+                              if (!reasonMatch) {
+                                return <span>{item.reason}</span>;
+                              }
+                              const [before, after] = item.reason.split(reasonMatch[0]);
+                              return (
+                                <span>
+                                  {before}
+                                  <button
+                                    onClick={() => scrollToRisk(item.reasonLocationId || item.id)}
+                                    className="text-primary-600 hover:text-primary-700 underline"
+                                  >
+                                    {reasonMatch[0]}
+                                  </button>
+                                  {after}
+                                </span>
+                              );
+                            })()}
+                          </div>
+
+                          {/* 结构化字段 */}
+                          <div className="bg-surface-50 p-3 rounded-md border border-surface-200">
+                            <h5 className="text-xs font-semibold text-surface-600 mb-2">评审要点提取</h5>
+                            <div className="space-y-2">
+                              {item.structuredFields.map((field) => (
+                                <div key={field.id} className="flex flex-col gap-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-surface-500">{field.label}</span>
+                                      {field.confirmed && (
+                                        <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">
+                                          已确认
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => field.locationId ? scrollToRisk(field.locationId) : undefined}
+                                      className="text-xs text-primary-600 hover:text-primary-700"
+                                    >
+                                      定位原文
+                                    </button>
+                                  </div>
+                                  <input
+                                    value={field.value}
+                                    onChange={(e) => {
+                                      setRiskItems((prev) =>
+                                        prev.map((prevItem) =>
+                                          prevItem.id === item.id
+                                            ? {
+                                                ...prevItem,
+                                                structuredFields: prevItem.structuredFields.map((p) =>
+                                                  p.id === field.id ? { ...p, value: e.target.value } : p
+                                                ),
+                                              }
+                                            : prevItem
+                                        )
+                                      );
+                                    }}
+                                    className="w-full px-2 py-1 border border-surface-200 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
             
@@ -492,6 +687,7 @@ function ReviewerPage() {
                   <CheckCircle2 className="w-3.5 h-3.5" /> 结构化字段将同步提交
                 </span>
                 <button 
+                  onClick={handleSubmit}
                   className={cn(
                     "px-6 py-2 text-white text-sm font-semibold rounded-lg shadow-md transition-colors active:scale-95 flex items-center gap-2",
                     opinionText.trim().length > 0 
