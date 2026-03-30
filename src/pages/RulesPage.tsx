@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Plus, Edit2, History, Trash2, CheckCircle2, XCircle, AlertTriangle, Info, ScanSearch, Database } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { companyScopeFilterOptions, type CompanyScope } from '../config/companyScope';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -43,6 +44,8 @@ export interface RuleVersion {
 export interface MockRule {
   id: string;
   name: string;
+  /** 产业公司，对应库字段 company_scope */
+  companyScope: CompanyScope;
   module: string;
   status: RuleStatus;
   currentVersion: number;
@@ -99,6 +102,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R001',
     name: '交货方式要求',
+    companyScope: '输配电',
     module: '履约交付平台',
     status: 'active',
     currentVersion: 3,
@@ -118,6 +122,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R002',
     name: '付款方式要求',
+    companyScope: '诺雅克',
     module: '财务部',
     status: 'active',
     currentVersion: 2,
@@ -136,6 +141,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R003',
     name: '质保期要求',
+    companyScope: '低压',
     module: '质量管理部',
     status: 'active',
     currentVersion: 1,
@@ -151,6 +157,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R004',
     name: '违约金上限',
+    companyScope: '全集团',
     module: '法务部',
     status: 'inactive',
     currentVersion: 2,
@@ -169,6 +176,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R005',
     name: '发票开具要求',
+    companyScope: '低压',
     module: '财务部',
     status: 'active',
     currentVersion: 1,
@@ -184,6 +192,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R006',
     name: '运输方式（仅识别）',
+    companyScope: '诺雅克',
     module: '履约交付平台',
     status: 'active',
     currentVersion: 1,
@@ -201,6 +210,7 @@ export const mockRules: MockRule[] = [
   {
     id: 'R007',
     name: '检验与试验不合格处罚（仅识别）',
+    companyScope: '输配电',
     module: '质量管理部',
     status: 'active',
     currentVersion: 1,
@@ -225,16 +235,23 @@ const statusMeta: Record<RuleStatus, { label: string; icon: React.ReactNode; cls
 
 export default function RulesPage() {
   const [activeModule, setActiveModule] = useState('全部模块');
+  const [activeCompanyScope, setActiveCompanyScope] = useState<(typeof companyScopeFilterOptions)[number]>('全部产业公司');
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
     return mockRules.filter((r) => {
       const modOk = activeModule === '全部模块' || r.module === activeModule;
+      const scopeOk = activeCompanyScope === '全部产业公司' || r.companyScope === activeCompanyScope;
       const q = query.trim().toLowerCase();
-      const textOk = !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q);
-      return modOk && textOk;
+      const textOk =
+        !q ||
+        r.name.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q) ||
+        r.desc.toLowerCase().includes(q) ||
+        r.companyScope.toLowerCase().includes(q);
+      return modOk && scopeOk && textOk;
     });
-  }, [activeModule, query]);
+  }, [activeModule, activeCompanyScope, query]);
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto animate-in fade-in duration-500 pb-20">
@@ -251,31 +268,53 @@ export default function RulesPage() {
         </Link>
       </div>
 
-      <div className="bg-white p-3 rounded-2xl border border-surface-200 shadow-sm flex flex-col sm:flex-row items-center gap-4">
-        <div className="flex items-center gap-2 pr-2 overflow-x-auto hide-scrollbar w-full sm:w-auto">
-          {moduleFilterOptions.map((mod) => (
-            <button
-              key={mod}
-              onClick={() => setActiveModule(mod)}
-              className={cn(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
-                activeModule === mod ? 'bg-blue-50 text-blue-700' : 'text-surface-600 hover:bg-surface-50'
-              )}
+      <div className="bg-white p-4 rounded-2xl border border-surface-200 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
+          <label className="flex flex-col gap-1.5 w-full sm:w-auto sm:min-w-[160px]">
+            <span className="text-xs font-medium text-surface-500">识别场景</span>
+            <select
+              value={activeModule}
+              onChange={(e) => setActiveModule(e.target.value)}
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-900 focus:border-blue-300 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
             >
-              {mod}
-            </button>
-          ))}
-        </div>
-        <div className="hidden sm:block h-6 w-px bg-surface-200" />
-        <div className="flex-1 relative w-full">
-          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-surface-400" />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索规则名称、ID 或描述..."
-            className="w-full pl-10 pr-4 py-2 bg-surface-50 border border-transparent rounded-lg focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium text-surface-900 outline-none"
-          />
+              {moduleFilterOptions.map((mod) => (
+                <option key={mod} value={mod}>
+                  {mod}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 w-full sm:w-auto sm:min-w-[180px]">
+            <span className="text-xs font-medium text-surface-500">
+              产业公司 <span className="text-surface-400 font-normal">（company_scope）</span>
+            </span>
+            <select
+              value={activeCompanyScope}
+              onChange={(e) =>
+                setActiveCompanyScope(e.target.value as (typeof companyScopeFilterOptions)[number])
+              }
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-900 focus:border-blue-300 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+            >
+              {companyScopeFilterOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex-1 min-w-[min(100%,220px)] w-full lg:min-w-[240px]">
+            <span className="text-xs font-medium text-surface-500 mb-1.5 block lg:sr-only">关键词</span>
+            <div className="relative w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索规则名称、ID、描述或产业公司…"
+                className="w-full pl-9 pr-3 py-2 bg-surface-50 border border-surface-200 rounded-lg focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-100 transition-all text-sm font-medium text-surface-900 outline-none"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -285,6 +324,10 @@ export default function RulesPage() {
             <thead>
               <tr className="border-b border-surface-200">
                 <th className="py-4 px-6 font-semibold text-xs text-surface-500 uppercase tracking-wider bg-white">规则名称 / ID</th>
+                <th className="py-4 px-6 font-semibold text-xs text-surface-500 uppercase tracking-wider bg-white">
+                  <span className="block">产业公司</span>
+                  <span className="block text-[10px] font-normal text-surface-400 normal-case tracking-normal">company_scope</span>
+                </th>
                 <th className="py-4 px-6 font-semibold text-xs text-surface-500 uppercase tracking-wider bg-white">所属模块</th>
                 <th className="py-4 px-6 font-semibold text-xs text-surface-500 uppercase tracking-wider bg-white">输出模式</th>
                 <th className="py-4 px-6 font-semibold text-xs text-surface-500 uppercase tracking-wider bg-white">状态</th>
@@ -303,6 +346,11 @@ export default function RulesPage() {
                         <div className="font-semibold text-surface-900 text-sm mb-0.5 group-hover:text-blue-700 transition-colors">{rule.name}</div>
                         <div className="text-xs text-surface-400 font-mono">{rule.id}</div>
                       </Link>
+                    </td>
+                    <td className="py-4 px-6">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-100">
+                        {rule.companyScope}
+                      </span>
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-surface-100 text-surface-700">

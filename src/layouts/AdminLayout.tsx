@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileCheck2, Settings, Users, LogOut, Search, Bell, ChevronDown, ArrowUpRight, Download } from 'lucide-react';
+import { LayoutDashboard, FileCheck2, Settings, Users, LogOut, Search, Bell, ArrowUpRight, Download, ClipboardList } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { exportElementToSvg } from '../utils/exportSvg';
@@ -16,7 +16,7 @@ export default function AdminLayout() {
   const navigation = [
     { name: '控制台首页', href: '/admin', icon: LayoutDashboard },
     { name: '规则管理', href: '/admin/rules', icon: FileCheck2 },
-    { name: '任务进度', href: '/admin/tasks', icon: Search },
+    { name: '任务进度', href: '/admin/tasks', icon: ClipboardList },
     { name: '用户管理', href: '/admin/users', icon: Users },
     { name: '系统设置', href: '/admin/settings', icon: Settings },
   ];

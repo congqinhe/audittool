@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, FileText, AlertTriangle, CheckCircle2, Info, Search, LayoutTemplate, ChevronUp, ChevronDown, Download, ThumbsUp, ThumbsDown, ScanSearch } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -103,6 +104,93 @@ export interface RiskItem {
   recognitionClauses?: RecognitionClauseItem[];
 }
 
+/** 规则详情「执行测试」通过 navigate state 传入的 mock 载荷 */
+export type RuleTestSnapshot = {
+  ruleId: string;
+  name: string;
+  /** 产业公司，对应库字段 company_scope */
+  companyScope: string;
+  module: string;
+  ruleMode: RuleMode;
+  fieldTemplate: string[];
+  testFileName: string;
+};
+
+const RULE_TEST_CARD_ID = 'rule-test-single';
+
+function buildRiskItemsFromRuleTestSnapshot(s: RuleTestSnapshot): RiskItem[] {
+  const anchorId = 'risk-1';
+  if (s.ruleMode === 'recognition_only') {
+    const title = s.name.replace(/（仅识别）/g, '').trim() || '规则测试（仅识别）';
+    return [
+      {
+        id: RULE_TEST_CARD_ID,
+        title,
+        summary: '合同侧信息已提取（模拟）',
+        details: `针对样本「${s.testFileName}」的单规则测试，仅展示识别结果。`,
+        conclusion:
+          '已提取识别结果供参考；不向 BPM 回传审核点结构化字段。主数据核对需人工进行。（规则测试 mock）',
+        reason: '下列为根据当前规则与样本合同模拟的识别摘录，章节锚点可对齐左侧 demo 合同段落。',
+        category: 'low',
+        ruleMode: 'recognition_only',
+        structuredFields: [],
+        recognitionClauses: [
+          {
+            id: 'rtc-test-1',
+            topic: title,
+            valueSummary: '模拟摘要值',
+            anchorLabel: '第3条第3.1款',
+            locationId: anchorId,
+            excerpt:
+              '卖方负责将设备交付至指定地点，并承担卸货费用。（模拟摘录，与审核页 demo 原文对齐）',
+          },
+        ],
+        recognitionFeedback: null,
+      },
+    ];
+  }
+
+  const fields: StructuredField[] =
+    s.fieldTemplate.length > 0
+      ? s.fieldTemplate.map((label, i) => ({
+          id: `ft-test-${i}`,
+          label,
+          value: `模拟提取值 - ${label}`,
+          sourceText: `（模拟）与「${label}」相关的原文依据。`,
+          locationId: anchorId,
+          confirmed: false,
+        }))
+      : [
+          {
+            id: 'ft-test-0',
+            label: '要点',
+            value: '（未配置字段模板时的模拟提取值）',
+            sourceText: '模拟',
+            locationId: anchorId,
+            confirmed: false,
+          },
+        ];
+
+  const ruleTitle = s.name.trim() || '规则测试';
+  return [
+    {
+      id: RULE_TEST_CARD_ID,
+      title: ruleTitle,
+      summary: '命中风险审核规则（模拟）',
+      details: `针对样本「${s.testFileName}」的单规则测试；以下为模拟评审结果，非真实模型返回。`,
+      conclusion: `合同中「${ruleTitle}」相关条款与规则要求不一致，判定触发风险。（模拟结果）`,
+      reason: '根据第3条第3.1款原文内容进行判断。（模拟）',
+      reasonLocationId: anchorId,
+      category: 'trigger',
+      quote: '3.1 卖方负责将设备交付至指定地点，并承担卸货费用。（模拟引用）',
+      locationId: anchorId,
+      structuredFields: fields,
+      ruleMode: 'bpm_structured',
+      isAccepted: false,
+    },
+  ];
+}
+
 /** 汇总智能评审在结果中引用过的段落 id（与左侧合同 DOM id 对齐） */
 function collectReferencedLocationIds(items: RiskItem[]): Set<string> {
   const s = new Set<string>();
@@ -132,9 +220,7 @@ function getInitialRightPanelWidth(): number {
   return clamp((vw - dragPx) * RIGHT_PANEL_FRACTION);
 }
 
-function ReviewerPage() {
-  const [activeRiskId, setActiveRiskId] = useState<string | null>(null);
-  const [riskItems, setRiskItems] = useState<RiskItem[]>([
+const DEFAULT_REVIEW_RISK_ITEMS: RiskItem[] = [
     {
       id: 'risk-1',
       title: '交货方式要求',
@@ -286,7 +372,35 @@ function ReviewerPage() {
         },
       ],
     },
-  ]);
+];
+
+function ReviewerPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeRiskId, setActiveRiskId] = useState<string | null>(null);
+  const [riskItems, setRiskItems] = useState<RiskItem[]>(DEFAULT_REVIEW_RISK_ITEMS);
+  const [ruleTestSession, setRuleTestSession] = useState<null | {
+    ruleId: string;
+    name: string;
+    companyScope: string;
+    module: string;
+    testFileName: string;
+  }>(null);
+
+  useLayoutEffect(() => {
+    const snap = (location.state as { ruleTest?: RuleTestSnapshot } | null)?.ruleTest;
+    if (!snap) return;
+    setRiskItems(buildRiskItemsFromRuleTestSnapshot(snap));
+    setActiveRiskId(RULE_TEST_CARD_ID);
+    setRuleTestSession({
+      ruleId: snap.ruleId,
+      name: snap.name,
+      companyScope: snap.companyScope,
+      module: snap.module,
+      testFileName: snap.testFileName,
+    });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
+  }, [location.state, location.pathname, location.search, navigate]);
 
   const referencedLocationIds = useMemo(() => collectReferencedLocationIds(riskItems), [riskItems]);
 
@@ -519,6 +633,20 @@ function ReviewerPage() {
     return item.category;
   }, [activeRiskId, sortedRiskItems]);
 
+  type ProgressSegment = 'pending' | 'resolved' | 'ignored';
+
+  /** 当前卡片对应的处理进度区选中态（结构化项；仅识别不占用） */
+  const selectedProgressSegment = useMemo((): ProgressSegment | null => {
+    if (!activeRiskId) return null;
+    const item = sortedRiskItems.find(
+      (i) => i.id === activeRiskId || i.recognitionClauses?.some((c) => c.locationId === activeRiskId)
+    );
+    if (!item || item.ruleMode !== 'bpm_structured') return null;
+    if (item.ignored) return 'ignored';
+    if (item.isAccepted) return 'resolved';
+    return 'pending';
+  }, [activeRiskId, sortedRiskItems]);
+
   /** 点击统计区：滚动右侧列表到该类型第一条卡片（与列表排序一致） */
   const scrollToFirstCardOfSegment = (segment: 'trigger' | 'missing' | 'low' | 'recognition_only') => {
     const first = sortedRiskItems.find((item) => {
@@ -625,28 +753,56 @@ function ReviewerPage() {
     <div ref={pageRef} className="flex flex-col h-screen bg-surface-50 overflow-hidden">
       {/* 顶部导航栏 */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-surface-200 shrink-0 z-10">
-        <div className="flex items-center gap-4">
-          <button className="flex items-center gap-2 text-surface-500 hover:text-surface-900 transition-colors">
-            <ChevronLeft className="w-5 h-5" />
-            <span className="font-medium text-sm">返回BPM任务</span>
-          </button>
-          <div className="h-4 w-[1px] bg-surface-300"></div>
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 bg-primary-50 text-primary-600 rounded-md">
+        <div className="flex items-center gap-4 min-w-0">
+          {ruleTestSession ? (
+            <Link
+              to={ruleTestSession.ruleId === 'new' ? '/admin/rules/new' : `/admin/rules/${encodeURIComponent(ruleTestSession.ruleId)}?tab=test`}
+              className="flex items-center gap-2 text-surface-500 hover:text-primary-700 transition-colors shrink-0"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span className="font-medium text-sm">返回规则测试</span>
+            </Link>
+          ) : (
+            <button className="flex items-center gap-2 text-surface-500 hover:text-surface-900 transition-colors shrink-0">
+              <ChevronLeft className="w-5 h-5" />
+              <span className="font-medium text-sm">返回BPM任务</span>
+            </button>
+          )}
+          <div className="h-4 w-[1px] bg-surface-300 shrink-0"></div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-1.5 bg-primary-50 text-primary-600 rounded-md shrink-0">
               <FileText className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="font-semibold text-surface-900 leading-tight">设备采购合同_XX变电站项目.pdf</h1>
-              <div className="flex items-center gap-2 text-xs text-surface-500 mt-0.5">
-                <span>任务ID: CON-20250321-001</span>
-                <span>•</span>
-                <span>项目: XX变电站项目</span>
+            <div className="min-w-0">
+              <h1 className="font-semibold text-surface-900 leading-tight truncate">
+                {ruleTestSession ? ruleTestSession.testFileName : '设备采购合同_XX变电站项目.pdf'}
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-surface-500 mt-0.5">
+                {ruleTestSession ? (
+                  <>
+                    <span className="font-medium text-primary-700">规则测试 · 单条结果预览</span>
+                    <span>•</span>
+                    <span className="truncate max-w-[200px]" title={ruleTestSession.name}>
+                      {ruleTestSession.name}
+                    </span>
+                    <span>•</span>
+                    <span>{ruleTestSession.companyScope}</span>
+                    <span>•</span>
+                    <span>{ruleTestSession.module}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>任务ID: CON-20250321-001</span>
+                    <span>•</span>
+                    <span>项目: XX变电站项目</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
+
+        <div className="flex items-center gap-4 shrink-0">
           <button
             onClick={() => exportElementToSvg(pageRef.current, 'reviewer-page')}
             className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-600 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
@@ -656,7 +812,9 @@ function ReviewerPage() {
           </button>
           <div className="px-3 py-1.5 bg-surface-100 rounded-full flex items-center gap-2 border border-surface-200 shadow-sm">
             <div className="w-2 h-2 rounded-full bg-primary-500"></div>
-            <span className="text-sm font-medium text-surface-700">财务部视图</span>
+            <span className="text-sm font-medium text-surface-700">
+              {ruleTestSession ? '规则测试' : '财务部视图'}
+            </span>
           </div>
         </div>
       </header>
@@ -829,11 +987,18 @@ function ReviewerPage() {
                 'border-b border-surface-100 bg-white/95 backdrop-blur-sm supports-[backdrop-filter]:bg-white/90'
               )}
             >
-              <h2 className="text-lg font-bold text-surface-900 flex items-center min-w-0 shrink-0">
-                <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-blue-600">
-                  智能审核结果
-                </span>
-              </h2>
+              <div className="flex flex-col min-w-0 shrink-0 gap-0.5">
+                <h2 className="text-lg font-bold text-surface-900 flex items-center min-w-0">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-blue-600">
+                    智能审核结果
+                  </span>
+                </h2>
+                {ruleTestSession && (
+                  <p className="text-[10px] font-medium text-primary-700/90 truncate max-w-[14rem] sm:max-w-xs" title={ruleTestSession.name}>
+                    单规则测试 mock · {ruleTestSession.name}
+                  </p>
+                )}
+              </div>
               {/* 处理进度 + 风险概览：均仅统计/跳转「评审结果」结构化项；仅识别见右侧胶囊 */}
               <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs font-medium bg-surface-100 p-1 rounded-full border border-surface-200">
                 {(() => {
@@ -851,13 +1016,20 @@ function ReviewerPage() {
                   const statBase =
                     'rounded-full flex items-center gap-1 px-2 py-0.5 tabular-nums leading-none shrink-0';
                   const statBtn =
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-1';
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-1 active:scale-[0.98] transition-[transform,box-shadow,background-color] duration-150';
+                  const progressSelectedRing = 'shadow-sm ring-1 ring-black/[0.08]';
                   return (
                     <>
                       <div
+                        role="group"
+                        aria-label="待处理"
+                        aria-current={selectedProgressSegment === 'pending' ? 'true' : undefined}
                         className={cn(
                           statBase,
-                          'pl-2 pr-0.5 gap-0.5 bg-white/75 text-orange-900 ring-1 ring-orange-200/45 shadow-[0_1px_0_rgba(0,0,0,0.03)]'
+                          'pl-2 pr-0.5 gap-0.5 text-orange-900 transition-[background-color,box-shadow] duration-150',
+                          selectedProgressSegment === 'pending'
+                            ? cn('bg-orange-100 ring-1 ring-orange-300/70', progressSelectedRing)
+                            : 'bg-white/75 ring-1 ring-orange-200/45 shadow-[0_1px_0_rgba(0,0,0,0.03)]'
                         )}
                         title="待处理：未采纳/确认且未忽略（评审结果）"
                       >
@@ -868,10 +1040,10 @@ function ReviewerPage() {
                           disabled={nPending === 0}
                           onClick={scrollToNextPending}
                           className={cn(
-                            'p-0.5 rounded-full transition-colors',
+                            'p-0.5 rounded-full transition-colors active:scale-90',
                             nPending === 0
                               ? 'opacity-40 cursor-not-allowed'
-                              : 'text-orange-800 hover:bg-orange-100/80 cursor-pointer'
+                              : 'text-orange-800 hover:bg-orange-200/60 cursor-pointer'
                           )}
                           title="下一条待处理"
                           aria-label="下一条待处理"
@@ -883,13 +1055,19 @@ function ReviewerPage() {
                         type="button"
                         disabled={nResolved === 0}
                         onClick={() => scrollToFirstStructuredReviewState('resolved')}
+                        aria-pressed={selectedProgressSegment === 'resolved'}
                         className={cn(
                           statBase,
                           statBtn,
-                          'bg-white/55 text-emerald-900 ring-1 ring-emerald-200/40 shadow-[0_1px_0_rgba(0,0,0,0.02)]',
                           nResolved === 0
                             ? 'opacity-40 cursor-not-allowed'
-                            : 'hover:bg-emerald-50/90 cursor-pointer'
+                            : 'cursor-pointer',
+                          selectedProgressSegment === 'resolved'
+                            ? cn('bg-emerald-100 text-emerald-950 ring-1 ring-emerald-400/55', progressSelectedRing)
+                            : cn(
+                                'bg-white/55 text-emerald-900 ring-1 ring-emerald-200/40 shadow-[0_1px_0_rgba(0,0,0,0.02)]',
+                                nResolved > 0 && 'hover:bg-emerald-50/90'
+                              )
                         )}
                         title="已处理：已采纳/确认且未忽略，点击定位第一条"
                         aria-label="定位到第一条已处理"
@@ -902,13 +1080,19 @@ function ReviewerPage() {
                         type="button"
                         disabled={nIgnored === 0}
                         onClick={() => scrollToFirstStructuredReviewState('ignored')}
+                        aria-pressed={selectedProgressSegment === 'ignored'}
                         className={cn(
                           statBase,
                           statBtn,
-                          'bg-white/50 text-surface-700 ring-1 ring-surface-200/80',
                           nIgnored === 0
                             ? 'opacity-40 cursor-not-allowed'
-                            : 'hover:bg-surface-100/90 cursor-pointer'
+                            : 'cursor-pointer',
+                          selectedProgressSegment === 'ignored'
+                            ? cn('bg-surface-300/95 text-surface-900 ring-1 ring-surface-400/70', progressSelectedRing)
+                            : cn(
+                                'bg-white/50 text-surface-700 ring-1 ring-surface-200/80',
+                                nIgnored > 0 && 'hover:bg-surface-100/90'
+                              )
                         )}
                         title="已忽略，点击定位第一条"
                         aria-label="定位到第一条已忽略"
@@ -1265,25 +1449,12 @@ function ReviewerPage() {
                                 <div className="space-y-2">
                                   {item.structuredFields.map((field) => (
                                     <div key={field.id} className="flex flex-col gap-1">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs text-surface-500">{field.label}</span>
-                                          {field.confirmed && (
-                                            <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">
-                                              已确认
-                                            </span>
-                                          )}
-                                        </div>
-                                        {field.locationId ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => scrollToRisk(field.locationId!)}
-                                            className="text-xs text-primary-600 hover:text-primary-700"
-                                          >
-                                            定位原文
-                                          </button>
-                                        ) : (
-                                          <span className="text-[10px] text-surface-400">—</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-surface-500">{field.label}</span>
+                                        {field.confirmed && (
+                                          <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">
+                                            已确认
+                                          </span>
                                         )}
                                       </div>
                                       <input

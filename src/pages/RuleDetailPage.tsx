@@ -18,13 +18,13 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import {
   mockRules,
-  categoryMeta,
   ruleModules,
   ruleOutputModeMeta,
   type MockRule,
-  type RuleCategory,
   type RuleOutputMode,
 } from './RulesPage';
+import type { RuleTestSnapshot } from './ReviewerPage';
+import { companyScopes, type CompanyScope } from '../config/companyScope';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -40,32 +40,11 @@ const tabs = [
 
 type TabKey = (typeof tabs)[number]['key'];
 
-type TestResultState =
-  | {
-      mode: 'bpm_structured';
-      category: RuleCategory;
-      summary: string;
-      conclusion: string;
-      reason: string;
-      quote: string;
-      fields: { label: string; value: string }[];
-    }
-  | {
-      mode: 'recognition_only';
-      summary: string;
-      clauses: {
-        id: string;
-        topic?: string;
-        valueSummary?: string;
-        anchorLabel: string;
-        excerpt: string;
-      }[];
-    };
-
 function emptyRule(): MockRule {
   return {
     id: '',
     name: '',
+    companyScope: companyScopes[0],
     module: ruleModules[0],
     status: 'draft',
     currentVersion: 0,
@@ -89,10 +68,17 @@ export default function RuleDetailPage() {
 
   const initial = useMemo(() => {
     if (isNew) return emptyRule();
-    return mockRules.find((r) => r.id === ruleId) ?? { ...emptyRule(), id: ruleId ?? '', name: `未知规则 ${ruleId}` };
+    return (
+      mockRules.find((r) => r.id === ruleId) ?? {
+        ...emptyRule(),
+        id: ruleId ?? '',
+        name: `未知规则 ${ruleId}`,
+      }
+    );
   }, [isNew, ruleId]);
 
   const [name, setName] = useState(initial.name);
+  const [companyScope, setCompanyScope] = useState<CompanyScope>(initial.companyScope);
   const [module, setModule] = useState(initial.module);
   const [desc, setDesc] = useState(initial.desc);
   const [systemPrompt, setSystemPrompt] = useState(initial.systemPrompt);
@@ -107,7 +93,6 @@ export default function RuleDetailPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [testFile, setTestFile] = useState<string | null>(null);
   const [testRunning, setTestRunning] = useState(false);
-  const [testResult, setTestResult] = useState<null | TestResultState>(null);
 
   const handleSave = () => {
     setSavedFlash(true);
@@ -129,35 +114,19 @@ export default function RuleDetailPage() {
   const handleRunTest = () => {
     if (!testFile) return;
     setTestRunning(true);
-    setTestResult(null);
     window.setTimeout(() => {
+      const snapshot: RuleTestSnapshot = {
+        ruleId: initial.id || 'new',
+        name,
+        companyScope,
+        module,
+        ruleMode,
+        fieldTemplate: [...fieldTemplate],
+        testFileName: testFile,
+      };
       setTestRunning(false);
-      if (ruleMode === 'recognition_only') {
-        setTestResult({
-          mode: 'recognition_only',
-          summary: '合同侧信息已提取（模拟）',
-          clauses: [
-            {
-              id: 'sim-1',
-              topic: name.replace(/（仅识别）/g, '') || '识别主题',
-              valueSummary: '模拟摘要值',
-              anchorLabel: '第2章第1节',
-              excerpt: '（模拟）与样本合同段落 ID 对齐后，此处为原文摘录。',
-            },
-          ],
-        });
-      } else {
-        setTestResult({
-          mode: 'bpm_structured',
-          category: 'trigger',
-          summary: '命中风险审核规则（模拟）',
-          conclusion: `合同中${name}条款与规则要求不一致，判定触发风险。（模拟结果）`,
-          reason: '根据第3条第3.1款原文内容进行判断。（模拟）',
-          quote: '3.1 卖方负责将设备交付至指定地点，并承担卸货费用。（模拟引用）',
-          fields: fieldTemplate.map((f) => ({ label: f, value: `模拟提取值 - ${f}` })),
-        });
-      }
-    }, 1500);
+      navigate('/reviewer?ruleTest=1', { state: { ruleTest: snapshot } });
+    }, 800);
   };
 
   const switchTab = (t: TabKey) => {
@@ -178,7 +147,9 @@ export default function RuleDetailPage() {
         <div>
           <h2 className="text-2xl font-bold text-surface-900 tracking-tight">{isNew ? '新建规则' : '规则配置'}</h2>
           <p className="text-surface-500 mt-1 text-sm">
-            {isNew ? '创建新的评审规则' : `${initial.id} · v${initial.currentVersion} · ${initial.module}`}
+            {isNew
+              ? '创建新的评审规则'
+              : `${initial.id} · v${initial.currentVersion} · ${initial.companyScope} · ${initial.module}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -219,7 +190,7 @@ export default function RuleDetailPage() {
           <section className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6 space-y-5">
             <h3 className="text-sm font-bold text-surface-900 uppercase tracking-wide">基础信息</h3>
             <div className="grid sm:grid-cols-2 gap-4">
-              <label className="space-y-1.5">
+              <label className="space-y-1.5 sm:col-span-2">
                 <span className="text-xs font-medium text-surface-500">规则名称</span>
                 <input
                   value={name}
@@ -228,7 +199,23 @@ export default function RuleDetailPage() {
                 />
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-medium text-surface-500">所属模块</span>
+                <span className="text-xs font-medium text-surface-500">
+                  产业公司 <span className="text-surface-400 font-normal">（company_scope）</span>
+                </span>
+                <select
+                  value={companyScope}
+                  onChange={(e) => setCompanyScope(e.target.value as CompanyScope)}
+                  className="w-full rounded-xl border border-surface-200 px-3 py-2 text-sm bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                >
+                  {companyScopes.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-surface-500">识别场景（所属模块）</span>
                 <select
                   value={module}
                   onChange={(e) => setModule(e.target.value)}
@@ -412,8 +399,8 @@ export default function RuleDetailPage() {
           <section className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6 space-y-5">
             <h3 className="text-sm font-bold text-surface-900 uppercase tracking-wide">上传样本合同</h3>
             <p className="text-xs text-surface-500">
-              上传合同文件后执行测试，系统将使用当前系统提示词 + 用户提示词进行模拟评审。
-              {ruleMode === 'recognition_only' ? ' 仅识别规则的测试结果结构与审核页「识别结果」一致。' : ' 「评审结果」规则展示审核结论与评审要点提取。'}
+              上传样本合同后点击执行测试，将打开与正式审核相同的界面，仅展示<strong className="text-surface-700">当前这一条规则</strong>的模拟评审/识别结果（mock）。
+              左侧仍为演示合同原文，用于段落定位与高亮对齐。
             </p>
 
             <div
@@ -426,7 +413,7 @@ export default function RuleDetailPage() {
                 <div className="flex items-center justify-center gap-3">
                   <FileText className="w-5 h-5 text-blue-600" />
                   <span className="text-sm font-medium text-surface-900">{testFile}</span>
-                  <button onClick={() => { setTestFile(null); setTestResult(null); }} className="text-surface-400 hover:text-red-500">
+                  <button onClick={() => setTestFile(null)} className="text-surface-400 hover:text-red-500">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -458,112 +445,12 @@ export default function RuleDetailPage() {
               )}
             >
               <Play className="w-4 h-4" />
-              {testRunning ? '测试中…' : '执行测试'}
+              {testRunning ? '准备预览…' : '执行测试'}
             </button>
+            <p className="text-[11px] text-surface-400 leading-relaxed">
+              预览在「审核页」打开；顶部可返回本规则的测试页。刷新预览页将恢复完整演示数据。
+            </p>
           </section>
-
-          {/* 测试结果 */}
-          {testResult && (
-            <section className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-surface-900 uppercase tracking-wide">测试结果</h3>
-                  <span className="text-xs text-surface-400">
-                    {testResult.mode === 'recognition_only' ? '与审核页「仅识别」卡片一致' : '与审核页「评审结果」卡片一致'}
-                  </span>
-                </div>
-
-                {testResult.mode === 'bpm_structured' ? (
-                  <>
-                    <div className={cn('flex items-center gap-2 p-3 rounded-xl', categoryMeta[testResult.category].bg)}>
-                      <span className={cn('w-2.5 h-2.5 rounded-full', categoryMeta[testResult.category].dot)} />
-                      <span className={cn('text-sm font-semibold', categoryMeta[testResult.category].color)}>
-                        {categoryMeta[testResult.category].label}
-                      </span>
-                      <span className="text-sm text-surface-600 ml-1">— {testResult.summary}</span>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1">审核结论</div>
-                      <div className="rounded-lg bg-surface-50 px-3 py-2 text-sm text-surface-900">{testResult.conclusion}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1">结论原因</div>
-                      <div className="rounded-lg bg-surface-50 px-3 py-2 text-sm text-surface-600">{testResult.reason}</div>
-                    </div>
-
-                    {testResult.quote && (
-                      <div>
-                        <div className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1">原文引用</div>
-                        <div className="rounded-lg bg-surface-50 px-3 py-2 text-sm text-surface-600 italic border-l-2 border-blue-300">
-                          {testResult.quote}
-                        </div>
-                      </div>
-                    )}
-
-                    {testResult.fields.length > 0 && (
-                      <div className="bg-surface-50 p-4 rounded-xl border border-surface-200">
-                        <h5 className="text-xs font-semibold text-surface-600 mb-3">评审要点提取</h5>
-                        <div className="space-y-2">
-                          {testResult.fields.map((f) => (
-                            <div key={f.label} className="flex items-center gap-3">
-                              <span className="text-xs text-surface-500 w-24 shrink-0">{f.label}</span>
-                              <span className="text-sm text-surface-900 font-medium">{f.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <ScanSearch className="w-4 h-4 text-slate-600 shrink-0" />
-                      <span className="text-sm font-semibold text-slate-700">仅识别</span>
-                      <span className="text-sm text-surface-600">— {testResult.summary}</span>
-                    </div>
-                    <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed">
-                      已提取识别结果供参考；<span className="font-semibold">不向 BPM 回传审核点结构化字段</span>。主数据核对需人工进行。
-                    </p>
-                    <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200">
-                      <h5 className="text-xs font-semibold text-slate-700 mb-3">识别结果</h5>
-                      <ul className="space-y-4 list-none m-0 p-0">
-                        {testResult.clauses.map((clause, cIdx) => {
-                          const prev = cIdx > 0 ? testResult.clauses[cIdx - 1] : undefined;
-                          const topicChanged = !!clause.topic && clause.topic !== prev?.topic;
-                          const showResultLine =
-                            (clause.topic && clause.valueSummary) ||
-                            (topicChanged && clause.topic && !clause.valueSummary) ||
-                            (!clause.topic && !!clause.valueSummary);
-                          return (
-                            <li key={clause.id} className="text-sm leading-relaxed">
-                              {showResultLine && (
-                                <p className="text-surface-900 font-medium mb-1.5">
-                                  {clause.topic && clause.valueSummary
-                                    ? `${clause.topic}：${clause.valueSummary}`
-                                    : clause.topic
-                                      ? clause.topic
-                                      : clause.valueSummary}
-                                </p>
-                              )}
-                              <p className="text-surface-700">
-                                <span className="text-surface-600">原文</span>
-                                <span className="font-medium text-primary-600 underline underline-offset-2 decoration-primary-400/80 mx-0.5">
-                                  {clause.anchorLabel}
-                                </span>
-                                <span className="text-surface-800">「{clause.excerpt}」</span>
-                              </p>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  </>
-                )}
-              </div>
-            </section>
-          )}
         </div>
       )}
 

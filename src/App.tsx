@@ -6,13 +6,17 @@ import ReviewerPage from './pages/ReviewerPage';
 import DashboardPage from './pages/DashboardPage';
 import RulesPage from './pages/RulesPage';
 import RuleDetailPage from './pages/RuleDetailPage';
+import TasksPage from './pages/TasksPage';
 
 // 导入布局
 import AdminLayout from './layouts/AdminLayout';
 
+/** GitHub Pages 等子路径部署时由 CRA 注入，本地开发一般为空字符串 */
+const routerBasename = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <Routes>
         {/* 默认重定向到管理员仪表盘 */}
         <Route path="/" element={<Navigate to="/admin" replace />} />
@@ -26,8 +30,7 @@ function App() {
           <Route path="rules" element={<RulesPage />} />
           <Route path="rules/:ruleId" element={<RuleDetailPage />} />
           
-          {/* 其他管理页面的占位路由 */}
-          <Route path="tasks" element={<div className="flex h-full items-center justify-center text-surface-400">任务进度开发中...</div>} />
+          <Route path="tasks" element={<TasksPage />} />
           <Route path="users" element={<div className="flex h-full items-center justify-center text-surface-400">用户管理开发中...</div>} />
           <Route path="settings" element={<div className="flex h-full items-center justify-center text-surface-400">系统设置开发中...</div>} />
         </Route>

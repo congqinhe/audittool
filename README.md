@@ -17,6 +17,24 @@ npm start
 | 规则管理 | http://localhost:3000/admin/rules |
 | 审核复核页 | http://localhost:3000/reviewer |
 
+## GitHub Pages 访问
+
+仓库已配置 `package.json` 的 **`homepage`**（当前为 `https://congqinhe.github.io/audittool`），构建产物会带 **`/audittool`** 子路径；路由使用 **`basename`**，与正式环境一致。
+
+1. 安装依赖（含发布工具）：`npm install`
+2. 构建（会自动把 `index.html` 复制为 `404.html`，避免刷新子路由 404）：`npm run build`
+3. 发布到 `gh-pages` 分支：`npm run deploy:gh-pages`  
+4. 在 GitHub 仓库 **Settings → Pages** 中，将 **Source** 设为 **`gh-pages` / `(root)`**。
+
+线上入口示例：
+
+- 管理端：<https://congqinhe.github.io/audittool/admin>
+- 审核页：<https://congqinhe.github.io/audittool/reviewer>
+
+若仓库名或用户名不同，请修改 `package.json` 里的 **`homepage`** 为 `https://<用户>.github.io/<仓库名>`（不要末尾斜杠）。
+
+**更换为自有域名或其它访问地址**（含 DNS、`CNAME`、子路径与根域名差异）：见 [docs/部署-域名说明.md](docs/部署-域名说明.md)。
+
 ## 导入 Figma 继续设计
 
 若希望在 Figma 中继续设计，可使用 **html.to.design** 插件将页面导入 Figma。详细步骤见 [docs/FIGMA_设计导出指南.md](docs/FIGMA_设计导出指南.md)。
